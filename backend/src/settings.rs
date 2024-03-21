@@ -1,8 +1,12 @@
+use sqlx::ConnectOptions;
+
 /// Global settings for exposing all preconfigured variables
 #[derive(serde::Deserialize, Clone)]
 pub struct Settings {
     pub application: ApplicationSettings,
     pub debug: bool,
+    pub database: DatabaseSettings,
+    pub redis: RedisSettings,
 }
 
 /// Application's specific settings to expose `port`,
@@ -85,4 +89,44 @@ pub fn get_settings() -> Result<Settings, config::ConfigError> {
         .build()?;
 
     settings.try_deserialize::<Settings>()
+}
+
+/// Redis settings for the entire app
+#[derive(serde::Deserialize, Clone, Debug)]
+pub struct RedisSettings {
+    pub uri: String,
+    pub pool_max_open: u64,
+    pub pool_max_idle: u64,
+    pub pool_timeout_seconds: u64,
+    pub pool_expire_seconds: u64,
+}
+
+/// Database settings for the entire app
+#[derive(serde::Deserialize, Clone)]
+pub struct DatabaseSettings {
+    pub username: String,
+    pub password: String,
+    pub port: u16,
+    pub host: String,
+    pub database_name: String,
+    pub require_ssl: bool,
+}
+
+impl DatabaseSettings {
+    pub fn connect_to_db(&self) -> sqlx::postgres::PgConnectOptions {
+        let ssl_mode = if self.require_ssl {
+            sqlx::postgres::PgSslMode::Require
+        } else {
+            sqlx::postgres::PgSslMode::Prefer
+        };
+        let mut options = sqlx::postgres::PgConnectOptions::new()
+            .host(&self.host)
+            .username(&self.username)
+            .password(&self.password)
+            .port(self.port)
+            .ssl_mode(ssl_mode)
+            .database(&self.database_name);
+        options.log_statements(tracing::log::LevelFilter::Trace);
+        options
+    }
 }
